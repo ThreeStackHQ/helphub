@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
 import { db } from '@helphub/db';
 import { users, workspaces } from '@helphub/db';
+import { checkRateLimit, getClientIp } from '../../../../lib/rate-limit';
 
 const signupSchema = z.object({
   email: z.string().email().max(255),
@@ -38,6 +39,13 @@ async function uniqueSlug(base: string): Promise<string> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // Rate limit: 10 signup attempts/min per IP
+  const ip = getClientIp(request);
+  const rl = checkRateLimit(`signup:${ip}`, { limit: 10, windowMs: 60_000 });
+  if (rl.limited) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   try {
     const body: unknown = await request.json();
     const parsed = signupSchema.safeParse(body);

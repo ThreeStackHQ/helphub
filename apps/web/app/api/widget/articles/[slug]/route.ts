@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '@helphub/db';
 import { articles, analyticsEvents } from '@helphub/db';
 import { corsResponse, corsOptionsResponse } from '../../../../../lib/cors';
+import { checkRateLimit, getClientIp } from '../../../../../lib/rate-limit';
 
 export async function OPTIONS(): Promise<NextResponse> {
   return corsOptionsResponse();
@@ -20,6 +21,10 @@ export async function GET(
   if (!workspaceId) {
     return corsResponse({ error: 'workspaceId is required' }, { status: 400 });
   }
+
+  // Rate limit: 100 article fetches/min per workspaceId (widget traffic)
+  const rl = checkRateLimit(`widget-article:${workspaceId}`, { limit: 100, windowMs: 60_000 });
+  if (rl.limited) return corsResponse({ error: 'Too many requests' }, { status: 429 });
 
   const { slug } = await params;
 

@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@helphub/db';
 import { articles, analyticsEvents } from '@helphub/db';
 import { corsResponse, corsOptionsResponse } from '../../../../../../lib/cors';
+import { checkRateLimit, getClientIp } from '../../../../../../lib/rate-limit';
 
 export async function OPTIONS(): Promise<NextResponse> {
   return corsOptionsResponse();
@@ -15,12 +16,18 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> }
 ): Promise<NextResponse> {
   try {
-    const { slug: articleId } = await params;
+    // Rate limit: 50 tracking events/min per IP
+    const ip = getClientIp(request);
+    const rl = checkRateLimit(`helpful:${ip}`, { limit: 50, windowMs: 60_000 });
+    if (rl.limited) return corsResponse({ error: 'Too many requests' }, { status: 429 });
 
+    const { slug } = await params;
+
+    // Fix: query by slug (not by id — the URL param is the article slug)
     const [article] = await db
       .select({ id: articles.id, workspaceId: articles.workspaceId })
       .from(articles)
-      .where(eq(articles.id, articleId))
+      .where(eq(articles.slug, slug))
       .limit(1);
 
     if (!article) {
@@ -28,7 +35,6 @@ export async function POST(
     }
 
     const sessionId = request.headers.get('x-session-id') ?? undefined;
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ?? request.headers.get('x-real-ip') ?? undefined;
 
     await db.insert(analyticsEvents).values({
       workspaceId: article.workspaceId,

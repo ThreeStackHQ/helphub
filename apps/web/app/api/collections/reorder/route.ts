@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db, getDb } from '@helphub/db';
 import { collections, workspaces } from '@helphub/db';
 import { requireAuth } from '../../../../lib/auth-helpers';
@@ -39,6 +39,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (!workspace) return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
     if (workspace.userId !== session.user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+    // IDOR guard: verify every collection ID in the request belongs to THIS workspace
+    const collectionIds = items.map((i) => i.id);
+    const ownedCollections = await db
+      .select({ id: collections.id, workspaceId: collections.workspaceId })
+      .from(collections)
+      .where(inArray(collections.id, collectionIds));
+
+    const ownedIds = new Set(
+      ownedCollections.filter((c) => c.workspaceId === workspaceId).map((c) => c.id)
+    );
+    const foreignIds = collectionIds.filter((id) => !ownedIds.has(id));
+    if (foreignIds.length > 0) {
+      return NextResponse.json(
+        { error: 'Forbidden: one or more collection IDs do not belong to this workspace' },
+        { status: 403 }
+      );
+    }
 
     // Bulk reorder in transaction
     await getDb().transaction(async (tx) => {
