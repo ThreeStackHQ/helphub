@@ -1,0 +1,18 @@
+{
+  "name": "helphub",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "db:push": "cd packages/db && drizzle-kit push",
+    "db:migrate": "cd packages/db && drizzle-kit migrate",
+    "db:studio": "cd packages/db && drizzle-kit studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "pnpm@9.15.0"
+}
