@@ -6,14 +6,17 @@ export async function middleware(request: NextRequest) {
   const session = await auth();
   const { pathname } = request.nextUrl;
 
-  // Protect dashboard routes
-  if (pathname.startsWith('/dashboard')) {
+  // Protect dashboard routes (all pages inside (dashboard) route group resolve to these paths)
+  const protectedPrefixes = ['/dashboard', '/articles', '/collections', '/analytics', '/settings'];
+  const isProtected = protectedPrefixes.some((p) => pathname === p || pathname.startsWith(p + '/'));
+
+  if (isProtected) {
     if (!session?.user) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
   }
 
-  // Custom domain detection
+  // Custom domain detection — proxy to /[slug] based on host
   const forwardedHost = request.headers.get('x-forwarded-host');
   const host = forwardedHost ?? request.headers.get('host') ?? '';
   const isCustomDomain =
@@ -32,5 +35,12 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    '/dashboard/:path*',
+    '/articles/:path*',
+    '/collections/:path*',
+    '/analytics/:path*',
+    '/settings/:path*',
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ],
 };
